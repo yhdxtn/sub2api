@@ -42,12 +42,13 @@
         </button>
       </template>
     </div>
-    <div class="flex gap-2">
+    <div class="flex flex-wrap justify-end gap-2">
       <template v-if="selectedIds.length > 0">
         <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') }}</button>
         <button @click="$emit('reset-status')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.resetStatus') }}</button>
         <button @click="$emit('refresh-token')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.refreshToken') }}</button>
         <button @click="$emit('probe-upstream-billing')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.probeUpstreamBilling') }}</button>
+        <button @click="$emit('add-group')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.addGroup') }}</button>
         <button @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">{{ t('admin.accounts.bulkActions.enableScheduling') }}</button>
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
         <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
@@ -79,7 +80,8 @@ defineEmits([
   'toggle-schedulable',
   'reset-status',
   'refresh-token',
-  'probe-upstream-billing'
+  'probe-upstream-billing',
+  'add-group'
 ])
 
 const { t } = useI18n()

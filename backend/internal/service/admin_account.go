@@ -986,6 +986,17 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if len(input.AccountIDs) == 0 {
 		return result, nil
 	}
+	if input.GroupIDs != nil && len(input.AddGroupIDs) > 0 {
+		return nil, errors.New("group_ids and add_group_ids cannot be used together")
+	}
+	if len(input.AddGroupIDs) > 0 {
+		if err := s.validateGroupIDsExist(ctx, input.AddGroupIDs); err != nil {
+			return nil, err
+		}
+		if err := s.ValidateAccountGroupBindings(ctx, input.AddGroupIDs); err != nil {
+			return nil, err
+		}
+	}
 	if input.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
 			return nil, err
@@ -999,11 +1010,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		return nil, err
 	}
 
-	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
+	needMixedChannelCheck := (input.GroupIDs != nil || len(input.AddGroupIDs) > 0) && !input.SkipMixedChannelCheck
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || len(input.AddGroupIDs) > 0 || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1074,7 +1085,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			if platform == "" {
 				continue
 			}
-			if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
+			groupIDs := input.AddGroupIDs
+			if input.GroupIDs != nil {
+				groupIDs = *input.GroupIDs
+			}
+			if err := s.checkMixedChannelRisk(ctx, accountID, platform, groupIDs); err != nil {
 				return nil, err
 			}
 		}
@@ -1191,8 +1206,30 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	for _, accountID := range input.AccountIDs {
 		entry := BulkUpdateAccountResult{AccountID: accountID}
 
-		if input.GroupIDs != nil {
-			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
+		if input.GroupIDs != nil || len(input.AddGroupIDs) > 0 {
+			groupIDs := input.AddGroupIDs
+			if input.GroupIDs != nil {
+				groupIDs = *input.GroupIDs
+			} else {
+				account := targetsByID[accountID]
+				if account == nil {
+					entry.Success = false
+					entry.Error = ErrAccountNotFound.Error()
+					result.Failed++
+					result.FailedIDs = append(result.FailedIDs, accountID)
+					result.Results = append(result.Results, entry)
+					continue
+				}
+				seen := make(map[int64]struct{}, len(account.GroupIDs)+len(input.AddGroupIDs))
+				groupIDs = make([]int64, 0, len(account.GroupIDs)+len(input.AddGroupIDs))
+				for _, id := range append(append([]int64(nil), account.GroupIDs...), input.AddGroupIDs...) {
+					if _, exists := seen[id]; !exists {
+						seen[id] = struct{}{}
+						groupIDs = append(groupIDs, id)
+					}
+				}
+			}
+			if err := s.accountRepo.BindGroups(ctx, accountID, groupIDs); err != nil {
 				entry.Success = false
 				entry.Error = err.Error()
 				result.Failed++

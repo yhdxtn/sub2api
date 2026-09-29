@@ -172,6 +172,7 @@ type BulkUpdateAccountsRequest struct {
 	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
 	Schedulable             *bool                     `json:"schedulable"`
 	GroupIDs                *[]int64                  `json:"group_ids"`
+	AddGroupIDs             []int64                   `json:"add_group_ids"`
 	Credentials             map[string]any            `json:"credentials"`
 	Extra                   map[string]any            `json:"extra"`
 	ProbeEnabled            *bool                     `json:"upstream_billing_probe_enabled"`
@@ -2313,6 +2314,10 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "account_ids or filters is required")
 		return
 	}
+	if req.GroupIDs != nil && len(req.AddGroupIDs) > 0 {
+		response.BadRequest(c, "group_ids and add_group_ids cannot be used together")
+		return
+	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 	if err := service.ValidateUpstreamRequestIDHeaderExtra(req.Extra); err != nil {
@@ -2332,6 +2337,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.Status != "" ||
 		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
+		len(req.AddGroupIDs) > 0 ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0 ||
 		req.ProbeEnabled != nil
@@ -2353,6 +2359,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		Status:                req.Status,
 		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
+		AddGroupIDs:           req.AddGroupIDs,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
 		ProbeEnabled:          req.ProbeEnabled,

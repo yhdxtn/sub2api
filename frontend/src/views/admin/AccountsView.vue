@@ -184,6 +184,7 @@
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
+          @add-group="openBulkAddGroup"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
@@ -470,6 +471,18 @@
       @close="showBulkEdit = false"
       @updated="handleBulkUpdated"
     />
+    <BaseDialog :show="showBulkAddGroup" :title="t('admin.accounts.bulkActions.addGroup')" @close="showBulkAddGroup = false">
+      <p class="mb-4 text-sm text-gray-600 dark:text-gray-300">{{ t('admin.accounts.bulkActions.addGroupHint', { count: selIds.length }) }}</p>
+      <label for="bulk-add-group-select" class="input-label">{{ t('admin.accounts.bulkActions.addGroupSelect') }}</label>
+      <select id="bulk-add-group-select" v-model.number="bulkAddGroupID" class="input w-full">
+        <option :value="null">{{ t('admin.accounts.bulkActions.addGroupSelect') }}</option>
+        <option v-for="group in bulkAddGroupOptions" :key="group.id" :value="group.id">{{ group.name }}</option>
+      </select>
+      <template #footer>
+        <button class="btn btn-secondary" :disabled="bulkAddingGroup" @click="showBulkAddGroup = false">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" :disabled="bulkAddingGroup || bulkAddGroupID === null" @click="handleBulkAddGroup">{{ t('admin.accounts.bulkActions.addGroup') }}</button>
+      </template>
+    </BaseDialog>
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
@@ -503,6 +516,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
@@ -594,6 +608,16 @@ const showImportData = ref(false)
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
+const showBulkAddGroup = ref(false)
+const bulkAddingGroup = ref(false)
+const bulkAddGroupID = ref<number | null>(null)
+const bulkAddGroupOptions = computed(() => {
+  const available = authStore.isSimpleMode
+    ? groups.value.filter(group => group.platform !== 'composite')
+    : groups.value
+  if (selPlatforms.value.length !== 1) return available
+  return available.filter(group => group.platform === selPlatforms.value[0] || group.platform === 'composite')
+})
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -2099,6 +2123,34 @@ const openBulkEditSelected = () => {
     selectedTypes: [...selTypes.value]
   }
   showBulkEdit.value = true
+}
+
+const openBulkAddGroup = () => {
+  bulkAddGroupID.value = null
+  showBulkAddGroup.value = true
+}
+
+const handleBulkAddGroup = async () => {
+  const groupID = bulkAddGroupID.value
+  if (groupID === null || bulkAddingGroup.value || selIds.value.length === 0) return
+  bulkAddingGroup.value = true
+  try {
+    const selected = [...selIds.value]
+    const result = await adminAPI.accounts.bulkUpdate(selected, { add_group_ids: [groupID] })
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
+      setSelectedIds(result.failed_ids?.length ? result.failed_ids : selected)
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.addGroupSuccess', { count: result.success }))
+      clearSelection()
+    }
+    showBulkAddGroup.value = false
+    await reload()
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+  } finally {
+    bulkAddingGroup.value = false
+  }
 }
 
 const openBulkEditFiltered = async () => {

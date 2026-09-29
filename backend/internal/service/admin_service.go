@@ -458,6 +458,7 @@ type BulkUpdateAccountsInput struct {
 	Status         string
 	Schedulable    *bool
 	GroupIDs       *[]int64
+	AddGroupIDs    []int64 // Add these groups without removing existing bindings.
 	Credentials    map[string]any
 	Extra          map[string]any
 	ProbeEnabled   *bool
