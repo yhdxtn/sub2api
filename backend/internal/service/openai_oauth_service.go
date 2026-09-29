@@ -72,6 +72,14 @@ func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 		if proxy != nil {
 			proxyURL = proxy.URL()
 		}
+	} else {
+		proxy, err := configuredOpenAIDefaultProxy(ctx, s.proxyRepo)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusServiceUnavailable, "OPENAI_DEFAULT_PROXY_INVALID", "%v", err)
+		}
+		if proxy != nil {
+			proxyURL = proxy.URL()
+		}
 	}
 
 	// Use default redirect URI if not specified
@@ -149,6 +157,14 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
 		if err != nil {
 			return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_OAUTH_PROXY_NOT_FOUND", "proxy not found: %v", err)
+		}
+		if proxy != nil {
+			proxyURL = proxy.URL()
+		}
+	} else if proxyURL == "" {
+		proxy, err := configuredOpenAIDefaultProxy(ctx, s.proxyRepo)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusServiceUnavailable, "OPENAI_DEFAULT_PROXY_INVALID", "%v", err)
 		}
 		if proxy != nil {
 			proxyURL = proxy.URL()

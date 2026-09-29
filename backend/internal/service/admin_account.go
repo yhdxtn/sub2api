@@ -524,6 +524,15 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 	// Never persist ephemeral SSO/password secrets after OAuth conversion.
 	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
+	if input.Platform == PlatformOpenAI && input.ProxyID == nil {
+		proxy, err := configuredOpenAIDefaultProxy(ctx, s.proxyRepo)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusServiceUnavailable, "OPENAI_DEFAULT_PROXY_INVALID", "%v", err)
+		}
+		if proxy != nil {
+			input.ProxyID = &proxy.ID
+		}
+	}
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {

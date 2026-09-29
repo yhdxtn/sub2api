@@ -128,6 +128,20 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
 
+### Default proxy for OpenAI accounts
+
+Create an active proxy in **Admin > Proxy Management**, then set its ID as
+`OPENAI_DEFAULT_PROXY_ID` in `.env`. When no proxy is selected in the account
+form, new OpenAI accounts and OAuth authorization sessions use this proxy.
+An explicitly selected proxy takes precedence. Existing accounts must be
+updated once in Account Management.
+
+For OpenAI requests that run before an account exists, such as manual token
+exchange, set `SUB2API_HTTP_PROXY` and `SUB2API_HTTPS_PROXY` to a proxy address
+reachable from the container. `SUB2API_NO_PROXY` keeps local services direct.
+If the proxy also handles other destinations, configure its routing rules so
+only the intended domains use a remote node.
+
 ### How Auto-Setup Works
 
 When using Docker Compose with `AUTO_SETUP=true`:

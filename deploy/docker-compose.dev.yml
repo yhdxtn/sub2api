@@ -25,6 +25,7 @@ services:
       - ./data:/app/data:Z
     environment:
       - AUTO_SETUP=true
+      - OPENAI_DEFAULT_PROXY_ID=${OPENAI_DEFAULT_PROXY_ID:-}
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=debug

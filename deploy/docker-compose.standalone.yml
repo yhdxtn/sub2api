@@ -32,6 +32,10 @@ services:
       # Auto Setup
       # =======================================================================
       - AUTO_SETUP=true
+      - OPENAI_DEFAULT_PROXY_ID=${OPENAI_DEFAULT_PROXY_ID:-}
+      - HTTP_PROXY=${SUB2API_HTTP_PROXY:-}
+      - HTTPS_PROXY=${SUB2API_HTTPS_PROXY:-}
+      - NO_PROXY=${SUB2API_NO_PROXY:-localhost,127.0.0.1,::1,172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
 
       # =======================================================================
       # Server Configuration
