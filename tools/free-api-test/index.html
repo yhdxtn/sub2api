@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Free 组 API 测试台</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, "Microsoft YaHei", sans-serif; background: #f3f7f6; color: #102b2b; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 15% 0%, #d8f4ec 0, transparent 36%), #f3f7f6; }
+      main { width: min(920px, calc(100% - 32px)); margin: 52px auto; }
+      header { margin-bottom: 24px; }
+      .eyebrow { display: inline-flex; gap: 8px; align-items: center; padding: 7px 11px; border-radius: 100px; background: #daf5eb; color: #087b65; font-size: 12px; font-weight: 800; letter-spacing: .06em; }
+      h1 { font-size: clamp(28px, 5vw, 42px); letter-spacing: -.04em; margin: 15px 0 8px; }
+      .lead { color: #55706d; line-height: 1.65; margin: 0; }
+      .card { background: #fff; border: 1px solid #dde9e5; border-radius: 19px; box-shadow: 0 18px 50px rgba(14, 59, 50, .06); padding: 26px; margin: 18px 0; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      label { display: block; font-size: 13px; font-weight: 750; margin-bottom: 9px; }
+      input, select, textarea { width: 100%; border: 1px solid #cfdfda; background: #fff; border-radius: 10px; padding: 12px 14px; color: #143431; font: inherit; outline: none; }
+      input:focus, select:focus, textarea:focus { border-color: #0a9b7d; box-shadow: 0 0 0 3px #d9f6ec; }
+      textarea { min-height: 130px; resize: vertical; line-height: 1.55; }
+      .key-row { display: flex; gap: 8px; }
+      .key-row input { min-width: 0; }
+      .help { font-size: 12px; color: #67807b; line-height: 1.6; margin: 8px 0 0; }
+      a { color: #07836a; text-decoration: none; font-weight: 700; }
+      a:hover { text-decoration: underline; }
+      button { border: 0; border-radius: 10px; padding: 12px 16px; font: inherit; font-weight: 750; cursor: pointer; white-space: nowrap; }
+      button:disabled { cursor: wait; opacity: .6; }
+      .primary { color: #fff; background: #078e73; }
+      .primary:hover:not(:disabled) { background: #067860; }
+      .secondary { color: #0d7663; background: #e3f5ee; }
+      .secondary:hover:not(:disabled) { background: #d1eee3; }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+      .result-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
+      h2 { font-size: 19px; margin: 0; }
+      .badge { display: inline-block; border-radius: 100px; padding: 6px 10px; background: #e8eeed; color: #506662; font-size: 12px; font-weight: 800; }
+      .badge.ok { color: #087b65; background: #d9f5e7; }
+      .badge.bad { color: #aa3e37; background: #ffebea; }
+      .meta { font-size: 12px; color: #687e79; margin: 14px 0; min-height: 18px; overflow-wrap: anywhere; }
+      pre { background: #102c29; color: #eefbf6; border-radius: 12px; padding: 18px; min-height: 100px; max-height: 480px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.7 Consolas, "SFMono-Regular", monospace; margin: 0; }
+      .warning { font-size: 12px; line-height: 1.6; color: #8a6027; background: #fff7e9; padding: 12px 15px; border-radius: 10px; margin: 18px 0 0; }
+      @media (max-width: 680px) { main { margin: 28px auto; } .grid { grid-template-columns: 1fr; } .card { padding: 18px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="eyebrow">SUB2API · OPENAI-FREE</span>
+        <h1>Free 组 API 测试台</h1>
+        <p class="lead">使用 Free 组 API 密钥，读取模型并发送一条真实请求。结果和错误会显示在下方。</p>
+      </header>
+
+      <section class="card" aria-label="API 测试表单">
+        <div class="grid">
+          <div>
+            <label for="apiKey">Free 组 API 密钥</label>
+            <div class="key-row">
+              <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+              <button id="toggleKey" class="secondary" type="button" aria-label="显示或隐藏密钥">显示</button>
+            </div>
+            <p class="help">在 <a href="/keys" target="_blank" rel="noopener noreferrer">API 密钥页面</a>复制名称为 Free、分组为 openAI-free 的密钥。</p>
+          </div>
+          <div>
+            <label for="model">模型</label>
+            <input id="model" list="models" value="gpt-6-luna" autocomplete="off" spellcheck="false" />
+            <datalist id="models"></datalist>
+            <p class="help">可手动填写，也可以点“读取可用模型”后选择。</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px">
+          <label for="prompt">测试消息</label>
+          <textarea id="prompt">你好，请用一句话回复我。</textarea>
+        </div>
+
+        <div class="actions">
+          <button id="send" class="primary" type="button">发送测试请求</button>
+          <button id="loadModels" class="secondary" type="button">读取可用模型</button>
+        </div>
+        <p class="warning">当前站点使用 HTTP，公网传输的密钥和消息未加密。此页面不会保存密钥；关闭或刷新后需要重新输入。</p>
+      </section>
+
+      <section class="card" aria-live="polite" aria-label="测试结果">
+        <div class="result-head"><h2>响应结果</h2><span id="status" class="badge">等待测试</span></div>
+        <p id="meta" class="meta">请求将发送到本站的 /v1/responses。</p>
+        <pre id="output">填写 Free 组密钥，然后点击“发送测试请求”。</pre>
+      </section>
+    </main>
+
+    <script>
+      const $ = id => document.getElementById(id)
+      const key = $('apiKey'), model = $('model'), prompt = $('prompt')
+      const send = $('send'), loadModels = $('loadModels')
+      const status = $('status'), meta = $('meta'), output = $('output')
+
+      function setResult(label, kind, details, text) {
+        status.textContent = label
+        status.className = 'badge' + (kind ? ' ' + kind : '')
+        meta.textContent = details
+        output.textContent = text
+      }
+
+      function responseText(data) {
+        if (typeof data.output_text === 'string' && data.output_text) return data.output_text
+        const parts = []
+        for (const item of data.output || []) {
+          for (const content of item.content || []) {
+            if (typeof content.text === 'string') parts.push(content.text)
+          }
+        }
+        return parts.join('\n') || JSON.stringify(data, null, 2)
+      }
+
+      async function request(path, options = {}) {
+        const apiKey = key.value.trim()
+        if (!apiKey) throw new Error('请先输入 Free 组 API 密钥。')
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 90000)
+        try {
+          const response = await fetch(path, {
+            ...options,
+            headers: { Authorization: `Bearer ${apiKey}`, ...(options.headers || {}) },
+            signal: controller.signal
+          })
+          const body = await response.text()
+          let data
+          try { data = JSON.parse(body) } catch { data = { raw: body } }
+          if (!response.ok) {
+            const error = data.error || data
+            throw new Error(`HTTP ${response.status} · ${error.code || ''} ${error.message || error.raw || body}`.trim())
+          }
+          return { response, data }
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+
+      $('toggleKey').addEventListener('click', () => {
+        const visible = key.type === 'password'
+        key.type = visible ? 'text' : 'password'
+        $('toggleKey').textContent = visible ? '隐藏' : '显示'
+      })
+
+      loadModels.addEventListener('click', async () => {
+        loadModels.disabled = true
+        setResult('读取中', '', '正在请求 /v1/models…', '')
+        try {
+          const { data } = await request('/v1/models')
+          const ids = (data.data || []).map(item => item.id).filter(Boolean).sort()
+          $('models').replaceChildren(...ids.map(id => {
+            const option = document.createElement('option')
+            option.value = id
+            return option
+          }))
+          setResult('模型已读取', 'ok', `共 ${ids.length} 个模型`, ids.join('\n') || '没有可用模型')
+        } catch (error) {
+          setResult('读取失败', 'bad', '请检查密钥及网络连接', error.message)
+        } finally {
+          loadModels.disabled = false
+        }
+      })
+
+      send.addEventListener('click', async () => {
+        if (!model.value.trim() || !prompt.value.trim()) {
+          setResult('缺少内容', 'bad', '请填写模型和测试消息', '模型和测试消息不能为空。')
+          return
+        }
+        send.disabled = true
+        setResult('请求中', '', '正在等待模型响应，最长 90 秒…', '')
+        const started = performance.now()
+        try {
+          const { data } = await request('/v1/responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: model.value.trim(), input: prompt.value.trim(), stream: false })
+          })
+          const seconds = ((performance.now() - started) / 1000).toFixed(2)
+          const usage = data.usage ? ` · 输入 ${data.usage.input_tokens ?? '?'} / 输出 ${data.usage.output_tokens ?? '?'} tokens` : ''
+          setResult('调用成功', 'ok', `HTTP 200 · ${seconds} 秒 · ${data.id || '无响应 ID'}${usage}`, responseText(data))
+        } catch (error) {
+          const seconds = ((performance.now() - started) / 1000).toFixed(2)
+          setResult('调用失败', 'bad', `耗时 ${seconds} 秒`, error.name === 'AbortError' ? '请求超时（90 秒）' : error.message)
+        } finally {
+          send.disabled = false
+        }
+      })
+    </script>
+  </body>
+</html>
