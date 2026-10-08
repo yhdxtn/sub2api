@@ -237,6 +237,31 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	return out, nil
 }
 
+func (r *userRepository) GetByUsername(ctx context.Context, username string) (*service.User, error) {
+	matches, err := r.client.User.Query().
+		Where(dbuser.UsernameEQ(username)).
+		Order(dbent.Asc(dbuser.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, service.ErrUserNotFound
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("username lookup matched multiple users for %q", username)
+	}
+	out := userEntityToService(matches[0])
+	groups, err := r.loadAllowedGroups(ctx, []int64{matches[0].ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := groups[matches[0].ID]; ok {
+		out.AllowedGroups = v
+	}
+	return out, nil
+}
+
 func (r *userRepository) Update(ctx context.Context, userIn *service.User, fields service.UserUpdateFields) error {
 	if userIn == nil {
 		return nil

@@ -533,8 +533,20 @@ func (s *AuthService) IsEmailVerifyEnabled(ctx context.Context) bool {
 
 // Login 用户登录，返回JWT token
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
-	// 查找用户
-	user, err := s.userRepo.GetByEmail(ctx, email)
+	// 邮箱继续使用原有查找逻辑；无 @ 的登录名按用户名查找。
+	var user *User
+	var err error
+	if strings.Contains(email, "@") {
+		user, err = s.userRepo.GetByEmail(ctx, email)
+	} else {
+		usernameRepo, ok := s.userRepo.(interface {
+			GetByUsername(context.Context, string) (*User, error)
+		})
+		if !ok {
+			return "", nil, ErrInvalidCredentials
+		}
+		user, err = usernameRepo.GetByUsername(ctx, strings.TrimSpace(email))
+	}
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return "", nil, ErrInvalidCredentials
