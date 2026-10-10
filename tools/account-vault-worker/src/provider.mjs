@@ -10,6 +10,8 @@ const AUTHENTICATOR = /authenticator(?: app)?|authentication app|身份验证器
 const EXTRA_CHALLENGE = /check your (?:email|inbox)|email verification|verify your email|passkey|security key|检查(?:您|你)?的?邮箱|查看(?:您|你)?的?邮箱|邮件验证码|電子郵件驗證|通行密钥|安全密钥/i;
 const EMAIL_INPUT_SELECTOR = 'input[type="email"], input[autocomplete="username"], input[name="email"], input[placeholder="电子邮件地址"], input[placeholder="Email address"]';
 
+export const ordinaryClickDelay = (random = Math.random) => 1000 + Math.floor(Math.min(1, Math.max(0, random())) * 1000);
+
 async function uniqueVisible(locator) {
   const visible = [];
   for (const element of await locator.all()) {
@@ -48,11 +50,13 @@ export class ChatGPTProvider {
   #loginStepSeenAt = 0;
   #callbackOrigin;
   #loginRedirectWaitMs;
+  #clickDelay;
 
   constructor({ page, context, signal, testOrigin, testCallbackOrigin, manualLogin = !testOrigin,
     externalNavigation = false, ownsContext = true, testLoginRedirectWaitMs,
     onUnexpectedClose = () => {} }) {
     this.#page = page;
+    this.#clickDelay = testOrigin ? () => 0 : ordinaryClickDelay;
     this.#context = context;
     this.#signal = signal;
     this.#browser = context.browser();
@@ -216,7 +220,7 @@ export class ChatGPTProvider {
       if (!introduction) return false;
       const acknowledge = await uniqueVisible(this.#page.getByRole('button', { name: /^(?:知道了|Got it)$/i }));
       if (!acknowledge) return false;
-      await acknowledge.click({ timeout: 5000 });
+      await this.#clickOrdinary(acknowledge);
       return true;
     } catch {
       // This prompt is unrelated to MFA. Navigation or a changed page must
@@ -234,9 +238,20 @@ export class ChatGPTProvider {
     if (!button) return false;
     // The click may succeed while the next auth page takes longer to load.
     // Do not treat Playwright's navigation wait as a failed login and close it.
-    try { await button.click({ timeout: 5000, noWaitAfter: true }); }
+    try { await this.#clickOrdinary(button); }
     catch { assertAlive(this.#signal); }
     await delay(250, this.#signal);
+    return true;
+  }
+
+  async #clickOrdinary(button) {
+    const url = this.#page.url();
+    if (!await button.isVisible()) return false;
+    if (!await button.isEnabled()) throw new WorkerError('LOGIN_MANUAL_REQUIRED');
+    await delay(this.#clickDelay(), this.#signal);
+    assertAlive(this.#signal);
+    if (this.#page.url() !== url) return false;
+    await button.click({ timeout: 3000, noWaitAfter: true });
     return true;
   }
 
@@ -276,7 +291,7 @@ export class ChatGPTProvider {
       await checkLease();
       try { await this.#page.goto(authorize.href, { waitUntil: 'commit', timeout: 30_000 }); }
       catch { if (!callback && !callbackError) await onManual('LOGIN_PROVIDER_REDIRECT'); }
-      let lastURL = '', seenAt = 0, lastSubmit = 0, oldCode;
+      let lastURL = '', lastSubmit = 0, oldCode;
       for (;;) {
         assertAlive(this.#signal);
         await checkLease();
@@ -291,8 +306,8 @@ export class ChatGPTProvider {
         // Provider challenges stay manual. A known Codex consent is submitted
         // only for the user's requested account and the captured workspace.
         if (await this.#page.getByRole('heading', { name: EXTRA_CHALLENGE }).count()) { await onManual('LOGIN_MANUAL_REQUIRED'); continue; }
-        if (current.href !== lastURL) { lastURL = current.href; seenAt = performance.now(); }
-        if (performance.now() - seenAt < 1500 || performance.now() - lastSubmit < 4000) { await delay(250, this.#signal); continue; }
+        if (current.href !== lastURL) { lastURL = current.href; lastSubmit = 0; }
+        if (lastSubmit && performance.now() - lastSubmit < 4000) { await delay(250, this.#signal); continue; }
         if (current.pathname === '/sign-in-with-chatgpt/codex/consent') {
           const visibleEmail = await uniqueVisible(this.#page.getByText(email, { exact: true }));
           const selected = await this.#page.locator('input[name="workspace_id"]:checked, input[type="hidden"][name="workspace_id"]').evaluateAll(inputs => inputs.map(input => input.value).filter(Boolean));
@@ -300,8 +315,8 @@ export class ChatGPTProvider {
           if (visibleEmail && workspace && selected.length > 0 && selected.every(value => value === workspace)) {
             const button = await uniqueVisible(this.#page.getByRole('button', { name: /^(?:Continue|继续)$/i }));
             if (button) {
-              try { await button.click({ timeout: 5000 }); }
-              catch { /* Keep the browser available on a provider rejection. */ }
+              try { if (!await this.#clickOrdinary(button)) continue; }
+              catch { assertAlive(this.#signal); await onManual('LOGIN_OAUTH_CONSENT_REQUIRED'); }
               lastSubmit = performance.now(); continue;
             }
           }
@@ -323,8 +338,8 @@ export class ChatGPTProvider {
             const form = input.locator('xpath=ancestor::form[1]');
             const button = await uniqueVisible((await form.count() ? form : this.#page).getByRole('button', { name: CONTINUE }));
             if (button) {
-              try { await input.fill(value, { timeout: 5000 }); await button.click({ timeout: 5000 }); }
-              catch { /* Hydration or navigation may replace the form. */ }
+              try { await input.fill(value, { timeout: 3000 }); if (!await this.#clickOrdinary(button)) continue; }
+              catch { assertAlive(this.#signal); await onManual('LOGIN_MANUAL_REQUIRED'); }
               value = ''; lastSubmit = performance.now(); continue;
             }
           }
@@ -449,15 +464,13 @@ export class ChatGPTProvider {
         await onManual('LOGIN_MANUAL_REQUIRED');
         continue;
       }
-      // The official login UI hydrates after the document becomes visible.
-      // Wait briefly after each URL change before clicking a normal form button.
+      // Reset duplicate-submit tracking after navigation. Ordinary buttons
+      // receive a single bounded delay once visible and enabled.
       const currentURL = this.#page.url();
       if (currentURL !== this.#lastLoginURL) {
         this.#lastLoginURL = currentURL;
         this.#loginURLSeenAt = performance.now();
       }
-      const settleMs = 1500 - (performance.now() - this.#loginURLSeenAt);
-      if (settleMs > 0) { await delay(settleMs, this.#signal); continue; }
       const emailInput = await uniqueVisible(this.#page.locator(EMAIL_INPUT_SELECTOR));
       const passwordInput = await uniqueVisible(this.#page.locator('input[type="password"]'));
       const otpInput = await uniqueVisible(this.#page.locator('input[autocomplete="one-time-code"]'));
@@ -465,11 +478,6 @@ export class ChatGPTProvider {
       if (step !== this.#lastLoginStep) {
         this.#lastLoginStep = step;
         this.#loginStepSeenAt = performance.now();
-      }
-      if (step === 'email' && currentOrigin === this.#origin && currentPath === '/' &&
-          performance.now() - this.#loginStepSeenAt < 1000) {
-        await delay(1000 - (performance.now() - this.#loginStepSeenAt), this.#signal);
-        continue;
       }
       let input, value, kind;
       if (passwordInput && attempts.password < 2 && password) {
@@ -488,7 +496,7 @@ export class ChatGPTProvider {
         const buttons = (await form.count() ? form : this.#page).getByRole('button', { name: CONTINUE });
         const button = await uniqueVisible(buttons);
         if (button) {
-          try { await input.fill(value, { timeout: 5000 }); await button.click({ timeout: 5000 }); }
+          try { await input.fill(value, { timeout: 3000 }); if (!await this.#clickOrdinary(button)) continue; }
           catch {
             // A login submit can navigate while Playwright is waiting for the
             // click to settle, or a challenge can disable the button. Neither
@@ -500,7 +508,7 @@ export class ChatGPTProvider {
           }
           value = ''; attempts[kind]++;
           onLoginSubmit(kind);
-          await delay(1000, this.#signal);
+          await delay(250, this.#signal);
           continue;
         }
       }
@@ -513,14 +521,14 @@ export class ChatGPTProvider {
         }
         const button = entries.length >= 1 && entries.length <= 3 ? entries[0] : null;
         if (button) {
-          try { await button.click({ timeout: 5000 }); }
+          try { if (!await this.#clickOrdinary(button)) continue; }
           catch {
             attempts.entry++;
             await onManual('LOGIN_MANUAL_REQUIRED');
             continue;
           }
           attempts.entry++;
-          await delay(1000, this.#signal);
+          await delay(250, this.#signal);
           continue;
         }
       }

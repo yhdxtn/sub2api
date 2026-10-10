@@ -1,13 +1,25 @@
 import { apiClient } from '../client'
 import type {
   VaultCodesResult, VaultImportItem, VaultImportPayload, VaultImportResult, VaultPage, VaultStatus,
-  VaultRotationJob, VaultRotationQueueResult, VaultWorkerToken, VaultGroup
+  VaultRotationJob, VaultRotationQueueResult, VaultWorkerToken, VaultGroup, VaultAccountHealth, VaultAutomationSettings
 } from '@/types/accountVault'
 
 const path = '/admin/account-vault'
 const options = (signal?: AbortSignal) => ({ signal, headers: { 'Cache-Control': 'no-store' } })
 
 export const accountVaultAPI = {
+  async reauthorizeInvalid(signal?: AbortSignal): Promise<VaultRotationQueueResult & { checked: number; refreshed: number; failed: number; skipped: number }> {
+    return (await apiClient.post(`${path}/automation/reauthorize`, {}, { ...options(signal), timeout: 60000 })).data
+  },
+  async automationSettings(signal?: AbortSignal): Promise<VaultAutomationSettings> {
+    return (await apiClient.get<VaultAutomationSettings>(`${path}/automation/settings`, options(signal))).data
+  },
+  async setAutomation(enabled: boolean, signal?: AbortSignal): Promise<VaultAutomationSettings> {
+    return (await apiClient.post<VaultAutomationSettings>(`${path}/automation/settings`, { enabled }, options(signal))).data
+  },
+  async automationHealth(ids: number[], force = false, signal?: AbortSignal): Promise<{ rows: VaultAccountHealth[] }> {
+    return (await apiClient.post<{ rows: VaultAccountHealth[] }>(`${path}/automation/${force ? 'refresh' : 'query'}`, { ids }, options(signal))).data
+  },
   async groups(signal?: AbortSignal): Promise<{ groups: VaultGroup[] }> {
     return (await apiClient.get<{ groups: VaultGroup[] }>(`${path}/groups`, options(signal))).data
   },

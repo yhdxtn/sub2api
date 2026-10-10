@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
@@ -10,6 +11,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+func TestVaultOAuthExchangeDiagnosticsDoNotExposeUpstreamSecrets(t *testing.T) {
+	require.Equal(t, "exchange_failed", vaultOAuthExchangeFailureCode(errors.New("Bearer synthetic-secret callback?code=synthetic-code")))
+	require.Equal(t, "invalid_grant", vaultOAuthExchangeFailureCode(errors.New(`{"error":"invalid_grant","refresh_token":"synthetic-secret"}`)))
+	require.Equal(t, "unsupported_country_region_territory", vaultOAuthExchangeFailureCode(errors.New(`{"error":{"code":"unsupported_country_region_territory"}}`)))
+}
 
 func TestVaultSessionConversionUsesRealTokenExpiryAndRejectsWrongIdentity(t *testing.T) {
 	token := buildCodexImportTestJWT(t, time.Now().Add(time.Hour), map[string]any{

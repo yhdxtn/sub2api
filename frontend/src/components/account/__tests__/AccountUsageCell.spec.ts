@@ -113,6 +113,18 @@ const cnUsageCellStubs = {
 }
 
 describe('AccountUsageCell', () => {
+  it('renders a real monthly OpenAI window and drops old quota after a failed query', async () => {
+    const usage = { updated_at: '2026-10-10T08:00:00Z', five_hour: null, seven_day: null, seven_day_sonnet: null, quota_query_status: 'live' as const, quota_primary: { used_percent: 7, limit_window_seconds: 2592000, reset_at: 2000000000, reset_after_seconds: 10 } }
+    const view = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 99000, platform: 'openai', type: 'oauth' }), requestBatchedUsage: vi.fn(), batchedUsage: usage },
+      global: { stubs: { UsageProgressBar: { props: ['label', 'utilization'], template: '<span>{{ label }}|{{ utilization }}</span>' }, OpenAIQuotaResetCell: true, AccountQuotaInfo: true } },
+    })
+    await flushPromises()
+    expect(view.text()).toContain('30d|7'); expect(view.text()).not.toContain('7d|')
+    await view.setProps({ batchedUsageError: 'failed' })
+    expect(view.text()).toContain('queryFailed'); expect(view.text()).not.toContain('30d|7')
+    view.unmount()
+  })
   beforeEach(() => {
     getUsage.mockReset()
     Object.defineProperty(window, 'matchMedia', {

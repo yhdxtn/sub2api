@@ -40,6 +40,11 @@ func registerAccountVaultRotationRoutes(vault *gin.RouterGroup, h *handler.Handl
 	}
 	rotation := vault.Group("/rotation")
 	handler := h.Admin.AccountVaultRotation
+	vault.GET("/automation/settings", handler.AutomationSettings)
+	vault.POST("/automation/settings", gin.HandlerFunc(stepUp), handler.SetAutomation)
+	vault.POST("/automation/query", handler.AutomationHealth)
+	vault.POST("/automation/refresh", gin.HandlerFunc(stepUp), handler.RefreshAutomationHealth)
+	vault.POST("/automation/reauthorize", gin.HandlerFunc(stepUp), handler.ReauthorizeInvalid)
 	vault.POST("/session/queue", gin.HandlerFunc(stepUp), handler.QueueSessions)
 	vault.POST("/session/jobs/query", handler.QuerySessions)
 	vault.POST("/session/export", gin.HandlerFunc(stepUp), handler.ExportSessions)

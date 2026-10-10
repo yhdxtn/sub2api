@@ -1,5 +1,16 @@
 export default {
   accountVault: {
+    automation: {
+      reauthorize: 'Recover invalid credentials', shortHint: 'Syncs each minute · Verification may need you',
+      reauthorizeResult: 'Queued {queued}, valid after refresh {refreshed}, query or queue failed {failed}, skipped {skipped}',
+      reauthorizeHint: 'Checks all linked accounts regardless of filters or selection. Refreshes normally first and reauthorizes confirmed invalid credentials.', checking: 'Checking…', noInvalid: 'No invalid credentials found to recover',
+      title: 'Automatically reauthorize revoked credentials', quota: 'Live quota / authorization', refresh: 'Query quota now',
+      hint: 'Queries linked accounts every minute. Ordinary buttons wait 1–2 seconds. Complete CAPTCHA, email verification and Passkey manually.',
+      queryFailed: 'Query failed; current quota is unknown. Please retry.', remaining: '{percent}% remaining',
+      reset: 'Resets: {time}', checked: 'Checked: {time}', cached: 'Cached', live: 'Live query',
+      manualHint: 'Check authorization progress. Complete verification in the assistant window or reauthorize when needed.',
+      states: { live: 'Quota available', unknown: 'Not queried / not linked', error: 'Quota unknown; query failed', reauthorizing: 'Recovering credentials', manual_required: 'Manual action required' },
+    },
     groups: {
       title: 'Group', filter: 'Filter by group', all: 'All groups', ungrouped: 'Ungrouped',
       set: 'Set group', batch: 'Group selected ({count})', selected: 'Change the group of {count} accounts',
@@ -15,6 +26,7 @@ export default {
 		copyFormat: 'One account per line: email----password----2FA secret (append ----note when present)',
 		copyPending: 'A selected account has an unconfirmed rotation. Complete it before copying credentials.',
     session: {
+      readyShort: 'Authorized · Account #{id}', details: 'Details',
       title: 'OAuth authorization', empty: 'Not authorized', start: 'Authorize and add account', update: 'Reauthorize / update credentials',
       batch: 'Batch authorize / update ({count})', resumeBatch: 'Resume authorization jobs ({count})', downloadBatch: 'Download import JSON ({count})', rawBatch: 'Download raw Session ({count})', download: 'System import JSON', raw: 'Raw Session',
       expires: 'Access credentials expire at {time}', refreshHint: 'Credentials refresh automatically. Reauthorize if refresh fails.',

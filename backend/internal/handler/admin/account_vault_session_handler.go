@@ -3,9 +3,11 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -279,14 +281,42 @@ func (h *AccountVaultRotationHandler) WorkerSaveSession(c *gin.Context) {
 	result, err := h.rotation.SaveOAuthAuthorization(ctx, grant, c.Param("job"), req.LeaseToken, req.Revision, func(email, sessionID string) (json.RawMessage, error) {
 		info, err := h.accounts.openaiOAuthService.ExchangeCode(ctx, &service.OpenAIExchangeCodeInput{SessionID: sessionID, Code: req.OAuth.Code, State: req.OAuth.State})
 		if err != nil {
+			slog.Warn("vault_oauth_exchange_failed", "job_id", c.Param("job"), "reason", vaultOAuthExchangeFailureCode(err), "status_code", infraerrors.Code(err))
 			return nil, service.ErrVaultRotationInvalid
 		}
 		defer func() { info.AccessToken = ""; info.RefreshToken = ""; info.IDToken = "" }()
-		return normalizeVaultOAuthAuthorization(email, h.accounts.openaiOAuthService.BuildAccountCredentials(info))
+		payload, err := normalizeVaultOAuthAuthorization(email, h.accounts.openaiOAuthService.BuildAccountCredentials(info))
+		if err != nil {
+			slog.Warn("vault_oauth_validation_failed", "job_id", c.Param("job"), "email_matches", strings.EqualFold(info.Email, email), "has_refresh_token", info.RefreshToken != "", "has_id_token", info.IDToken != "", "has_user_id", info.ChatGPTUserID != "", "has_account_id", info.ChatGPTAccountID != "", "client_matches", info.ClientID == openai.ClientID)
+		}
+		return payload, err
 	})
 	if !response.ErrorFrom(c, err) {
 		response.Success(c, gin.H{"job": result})
 	}
+}
+
+// Return only fixed codes: upstream error bodies can contain credentials or
+// callbacks and must never be written verbatim to browser-helper diagnostics.
+func vaultOAuthExchangeFailureCode(err error) string {
+	if err == nil {
+		return "none"
+	}
+	message := strings.ToLower(err.Error())
+	for _, code := range []string{"unsupported_country_region_territory", "invalid_grant", "invalid_client", "access_denied", "token_revoked", "refresh_token_invalidated"} {
+		if strings.Contains(message, code) {
+			return code
+		}
+	}
+	switch infraerrors.Reason(err) {
+	case "OPENAI_OAUTH_SESSION_NOT_FOUND":
+		return "session_expired"
+	case "OPENAI_OAUTH_INVALID_STATE", "OPENAI_OAUTH_STATE_REQUIRED":
+		return "state_invalid"
+	case "OPENAI_OAUTH_PROXY_NOT_FOUND", "OPENAI_DEFAULT_PROXY_INVALID":
+		return "proxy_configuration_invalid"
+	}
+	return "exchange_failed"
 }
 func (h *AccountVaultRotationHandler) WorkerCompleteSession(c *gin.Context) {
 	grant, ok := h.worker(c)

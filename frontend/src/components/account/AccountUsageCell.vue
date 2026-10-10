@@ -118,9 +118,14 @@
 
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
-      <div v-if="hasOpenAIUsageFallback" class="space-y-1">
+      <div v-if="error" class="text-xs text-amber-600">{{ t('admin.accountVault.automation.queryFailed') }}<button type="button" class="ml-2 text-blue-600" :disabled="activeQueryLoading" @click="loadActiveUsage">{{ t('common.refresh') }}</button></div>
+      <div v-else-if="hasOpenAIUsageFallback" class="space-y-1">
+        <template v-if="openAIQuotaWindows.length">
+          <UsageProgressBar v-for="(window, i) in openAIQuotaWindows" :key="i" :label="quotaWindowLabel(window.limit_window_seconds)" :utilization="window.used_percent" :resets-at="window.reset_at > 0 ? new Date(window.reset_at * 1000).toISOString() : null" color="emerald" />
+          <p class="text-[9px] text-gray-500">{{ t(`admin.accountVault.automation.${usageInfo?.quota_query_status === 'cached' ? 'cached' : 'live'}`) }} · {{ usageInfo?.updated_at ? new Date(usageInfo.updated_at).toLocaleString() : '—' }}</p>
+        </template>
         <UsageProgressBar
-          v-if="usageInfo?.five_hour"
+          v-if="!openAIQuotaWindows.length && usageInfo?.five_hour"
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
@@ -129,7 +134,7 @@
           color="indigo"
         />
         <UsageProgressBar
-          v-if="usageInfo?.seven_day"
+          v-if="!openAIQuotaWindows.length && usageInfo?.seven_day"
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
@@ -673,6 +678,8 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { quotaWindowLabel } from '@/features/account-vault/quota'
+import type { VaultQuotaWindow } from '@/types/accountVault'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
@@ -806,8 +813,9 @@ const geminiUsageAvailable = computed(() => {
 
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day || openAIQuotaWindows.value.length > 0
 })
+const openAIQuotaWindows = computed(() => [usageInfo.value?.quota_primary, usageInfo.value?.quota_secondary].filter((v): v is VaultQuotaWindow => !!v))
 
 const openAISevenDayEstimatedTotalCost = computed(() => {
   const sevenDay = usageInfo.value?.seven_day
@@ -1401,6 +1409,7 @@ const syncManagedUsageState = () => {
   if (!isBatchManaged.value) return
   usageInfo.value = props.batchedUsage ?? null
   error.value = props.batchedUsageError ?? null
+  if (error.value && props.account.platform === 'openai') usageInfo.value = null
   loading.value = props.batchedUsageLoading === true
 }
 
@@ -1414,8 +1423,10 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   // Check cache
   if (!options?.bypassCache) {
     const cached = _usageCache.get(props.account.id)
-    if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
+    const ttl = props.account.platform === 'openai' ? 60000 : USAGE_CACHE_TTL
+    if (cached && Date.now() - cached.ts < ttl) {
       usageInfo.value = cached.data
+      if (props.account.platform === 'openai' && cached.data.quota_query_status) usageInfo.value = { ...cached.data, quota_query_status: 'cached' }
       loading.value = false
       return
     }
@@ -1436,6 +1447,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   } catch (e: any) {
     if (!unmounted.value) {
       error.value = t('common.error')
+      if (props.account.platform === 'openai') { usageInfo.value = null; _usageCache.delete(props.account.id) }
       console.error('Failed to load usage:', e)
     }
   } finally {
@@ -1495,9 +1507,11 @@ const attachVisibilityObserver = () => {
 
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
+  error.value = null
   try {
     usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
   } catch (e: any) {
+    if (props.account.platform === 'openai') { error.value = t('common.error'); usageInfo.value = null; _usageCache.delete(props.account.id) }
     console.error('Failed to load active usage:', e)
   } finally {
     activeQueryLoading.value = false

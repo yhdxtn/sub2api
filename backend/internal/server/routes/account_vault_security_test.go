@@ -159,6 +159,11 @@ func TestAccountVaultRoutesOnlyRegisterInAdminNamespace(t *testing.T) {
 		"GET /api/v1/admin/account-vault/status",
 		"GET /api/v1/admin/account-vault",
 		"GET /api/v1/admin/account-vault/groups",
+		"GET /api/v1/admin/account-vault/automation/settings",
+		"POST /api/v1/admin/account-vault/automation/settings",
+		"POST /api/v1/admin/account-vault/automation/query",
+		"POST /api/v1/admin/account-vault/automation/refresh",
+		"POST /api/v1/admin/account-vault/automation/reauthorize",
 		"POST /api/v1/admin/account-vault/groups/assign",
 		"POST /api/v1/admin/account-vault/import",
 		"POST /api/v1/admin/account-vault/parse",
@@ -241,6 +246,9 @@ func TestAccountVaultRotationWritesKeepStepUpMiddleware(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/account-vault/rotation/queue"},
 		{http.MethodPost, "/api/v1/admin/account-vault/session/queue"},
 		{http.MethodPost, "/api/v1/admin/account-vault/session/export"},
+		{http.MethodPost, "/api/v1/admin/account-vault/automation/settings"},
+		{http.MethodPost, "/api/v1/admin/account-vault/automation/refresh"},
+		{http.MethodPost, "/api/v1/admin/account-vault/automation/reauthorize"},
 		{http.MethodPost, "/api/v1/admin/account-vault/rotation/00000000-0000-4000-8000-000000000001/resume"},
 		{http.MethodPost, "/api/v1/admin/account-vault/rotation/00000000-0000-4000-8000-000000000001/cancel"},
 		{http.MethodPost, "/api/v1/admin/account-vault/rotation/worker-token"},
@@ -254,7 +262,7 @@ func TestAccountVaultRotationWritesKeepStepUpMiddleware(t *testing.T) {
 		require.Contains(t, response.Body.String(), "STEP_UP_REQUIRED")
 		require.Equal(t, "no-store, private", response.Header().Get("Cache-Control"))
 	}
-	require.Equal(t, 8, calls)
+	require.Equal(t, 11, calls)
 }
 
 func TestAccountVaultWorkerRoutesRequireSeparateCapabilityAndNeverCache(t *testing.T) {

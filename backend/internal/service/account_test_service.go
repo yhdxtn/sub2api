@@ -874,6 +874,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	if strings.TrimSpace(prompt) != "" {
+		payload["input"] = []map[string]any{{"role": "user", "content": []map[string]any{{"type": "input_text", "text": prompt}}}}
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -939,6 +942,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// Only allow quota telemetry through; never expose authentication headers.
+	quotaHeaders := map[string]string{}
+	for key, values := range resp.Header {
+		lower := strings.ToLower(key)
+		if (strings.HasPrefix(lower, "x-codex-") && (strings.Contains(lower, "used-percent") || strings.Contains(lower, "reset") || strings.Contains(lower, "window"))) || lower == "retry-after" {
+			quotaHeaders[lower] = strings.Join(values, ",")
+		}
+	}
+	s.sendEvent(c, TestEvent{Type: "telemetry", Model: upstreamTestModelID, Data: map[string]any{"http_status": resp.StatusCode, "quota_headers": quotaHeaders}})
 
 	if isOAuth && s.accountRepo != nil {
 		if updates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(updates) > 0 {
@@ -2976,19 +2988,28 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 			if delta, ok := data["delta"].(string); ok && delta != "" {
 				s.sendEvent(c, TestEvent{Type: "content", Text: delta})
 			}
-		case "response.completed", "response.done":
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
-		case "response.failed":
-			errorMsg := "OpenAI response failed"
+		case "response.completed", "response.done", "response.failed", "response.incomplete":
 			if responseData, ok := data["response"].(map[string]any); ok {
-				if errData, ok := responseData["error"].(map[string]any); ok {
-					if msg, ok := errData["message"].(string); ok && msg != "" {
-						errorMsg = msg
+				model, _ := responseData["model"].(string)
+				s.sendEvent(c, TestEvent{Type: "usage", Model: model, Data: map[string]any{"usage": responseData["usage"], "status": responseData["status"], "incomplete_details": responseData["incomplete_details"]}})
+				if eventType == "response.failed" {
+					msg := "OpenAI response failed"
+					if errData, ok := responseData["error"].(map[string]any); ok {
+						if v, ok := errData["message"].(string); ok {
+							msg = v
+						}
 					}
+					return s.sendErrorAndEnd(c, msg)
 				}
 			}
-			return s.sendErrorAndEnd(c, errorMsg)
+			if eventType == "response.incomplete" {
+				return s.sendErrorAndEnd(c, "OpenAI response incomplete")
+			}
+			if eventType == "response.failed" {
+				return s.sendErrorAndEnd(c, "OpenAI response failed")
+			}
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {

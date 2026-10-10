@@ -6,6 +6,7 @@ import { accountVaultAPI } from '@/api/admin/accountVault'
 
 const mocks = vi.hoisted(() => ({ copy: vi.fn().mockResolvedValue(true), success: vi.fn(), error: vi.fn() }))
 vi.mock('@/api/admin/accountVault', () => ({ accountVaultAPI: {
+  automationSettings: vi.fn(), setAutomation: vi.fn(), automationHealth: vi.fn(), reauthorizeInvalid: vi.fn(),
   status: vi.fn(), list: vi.fn(), codes: vi.fn(), password: vi.fn(), secret: vi.fn(), delete: vi.fn(), rotationJobs: vi.fn(), queueRotation: vi.fn(), sessionJobs: vi.fn(), queueSessions: vi.fn(), exportSessions: vi.fn(), exportText: vi.fn(), groups: vi.fn(), assignGroup: vi.fn()
 } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: mocks.success, showError: mocks.error }) }))
@@ -36,6 +37,9 @@ const DataTableStub = defineComponent({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(accountVaultAPI.automationSettings).mockResolvedValue({ enabled: false, query_interval_seconds: 60 })
+  vi.mocked(accountVaultAPI.automationHealth).mockResolvedValue({ rows: [] })
+  vi.mocked(accountVaultAPI.setAutomation).mockResolvedValue({ enabled: true, query_interval_seconds: 60 })
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
   vi.mocked(accountVaultAPI.status).mockResolvedValue({ configured: true, ready: true, max_import_rows: 500, max_import_bytes: 2097152 })
   vi.mocked(accountVaultAPI.list).mockResolvedValue({ items: [row(1), row(2)], page: 1, page_size: 50, total: 2, pages: 1 })
@@ -64,6 +68,32 @@ async function setup() {
 }
 
 describe('account vault sensitive interactions', () => {
+  it('checks invalid credentials across all pages without depending on selection', async () => {
+    vi.mocked(accountVaultAPI.reauthorizeInvalid).mockResolvedValue({ rows: [{ account_id: 99, status: 'queued' }], checked: 2, refreshed: 1, failed: 0, skipped: 1 })
+    const page = await setup()
+    await page.get('[data-testid="select-1"]').setValue(true)
+    await page.get('[data-testid="vault-reauthorize-invalid"]').trigger('click')
+    await flushPromises()
+    expect(accountVaultAPI.reauthorizeInvalid).toHaveBeenCalledWith(expect.any(AbortSignal))
+    expect(accountVaultAPI.queueRotation).not.toHaveBeenCalled()
+    expect(mocks.success).toHaveBeenCalledWith('admin.accountVault.automation.reauthorizeResult')
+  })
+  it('keeps completed authorization details collapsed by default', async () => {
+    vi.mocked(accountVaultAPI.sessionJobs).mockResolvedValue({ jobs: [{ id: 'completed', account_id: 1, status: 'completed', phase: 'completed', completed_at: '2026-10-10T00:00:00Z', gateway_account_id: 42, revision: 1, progress: 'completed', message: 'Complete', can_cancel: false, can_resume: false, created_at: '', updated_at: '' }] })
+    const page = await setup()
+    expect(page.get('[data-testid="vault-session-details-1"]').attributes('open')).toBeUndefined()
+    expect(page.get('[data-testid="vault-session-1"]').text()).toContain('readyShort')
+    expect(page.get('[data-testid="vault-session-1"]').find('[role="progressbar"]').exists()).toBe(false)
+  })
+  it('enables automatic recovery and requests live quota for the current rows', async () => {
+    const page = await setup()
+    await page.get('[data-testid="vault-auto-reauth"]').setValue(true)
+    await flushPromises()
+    expect(accountVaultAPI.setAutomation).toHaveBeenCalledWith(true)
+    await page.get('[data-testid="vault-query-quota"]').trigger('click')
+    await flushPromises()
+    expect(accountVaultAPI.automationHealth).toHaveBeenCalledWith([1, 2], true, expect.any(AbortSignal))
+  })
   it('groups exactly the selected accounts and clears the completed selection', async () => {
     const page = await setup()
     await page.get('[data-testid="select-1"]').setValue(true)

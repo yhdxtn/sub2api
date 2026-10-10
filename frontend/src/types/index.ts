@@ -1422,6 +1422,9 @@ export interface GrokBillingSummary {
 }
 
 export interface AccountUsageInfo {
+  quota_query_status?: 'live' | 'cached'
+  quota_primary?: import('./accountVault').VaultQuotaWindow | null
+  quota_secondary?: import('./accountVault').VaultQuotaWindow | null
   source?: 'passive' | 'active'
   updated_at: string | null
   five_hour: UsageProgress | null

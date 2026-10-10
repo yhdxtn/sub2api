@@ -17,6 +17,13 @@
           </div>
         </div>
         <p v-if="ready" class="mt-3 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accountVault.rotation.scopeHint') }}</p>
+        <div v-if="ready" class="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-white/70 p-3 dark:bg-dark-800/70">
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" :checked="automationEnabled" :disabled="automationSaving || automationBusy" data-testid="vault-auto-reauth" @change="toggleAutomation" />{{ t('admin.accountVault.automation.title') }}</label>
+          <button type="button" class="btn btn-secondary btn-sm" :disabled="automationBusy || automationSaving" data-testid="vault-query-quota" @click="refreshQuota">{{ t('admin.accountVault.automation.refresh') }}</button>
+          <button type="button" class="btn btn-secondary btn-sm" :disabled="automationBusy || automationSaving || Boolean(jobActionBusy) || Boolean(sensitiveBusy)" :title="t('admin.accountVault.automation.reauthorizeHint')" data-testid="vault-reauthorize-invalid" @click="reauthorizeInvalid">{{ t(jobActionBusy === 'reauthorize' ? 'admin.accountVault.automation.checking' : 'admin.accountVault.automation.reauthorize') }}</button>
+          <span class="text-xs text-gray-500" :title="t('admin.accountVault.automation.hint')">{{ t('admin.accountVault.automation.shortHint') }}</span>
+        </div>
+        <p v-if="automationError" class="mt-2 text-xs text-amber-700 dark:text-amber-300" role="status">{{ t('admin.accountVault.automation.queryFailed') }}</p>
         <div v-if="!statusLoading && !ready" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="status">
           <p class="font-medium">{{ t('admin.accountVault.unavailable') }}</p>
           <p class="mt-1 break-words">{{ status?.message || t('admin.accountVault.configureHint') }}</p>
@@ -62,14 +69,15 @@
         <DataTable :data="accounts" :columns="columns" :loading="loading || statusLoading" :selectable="ready"
           row-key="id" v-model:selected-keys="selected" :selection-label="(row: VaultAccount) => row.email" data-testid="vault-table">
           <template #cell-email="{ row }">
-            <div class="min-w-0">
-              <div class="flex items-center gap-1"><p class="max-w-80 break-all font-medium text-gray-900 dark:text-gray-100" :data-testid="`vault-email-${row.id}`">{{ row.email }}</p><button type="button" class="btn btn-ghost !p-2" :aria-label="t('admin.accountVault.copyEmail')" :title="t('admin.accountVault.copyEmail')" :data-testid="`vault-copy-email-${row.id}`" @click="copyToClipboard(row.email, t('admin.accountVault.emailCopied'))"><Icon name="copy" size="sm" /></button></div>
-              <p class="mt-1 max-w-80 break-words text-xs text-gray-600 dark:text-gray-300">{{ row.issuer || t('admin.accountVault.noIssuer') }}</p>
+            <div class="w-52 min-w-0">
+              <div class="flex items-center gap-1"><p class="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100" :title="row.email" :data-testid="`vault-email-${row.id}`">{{ row.email }}</p><button type="button" class="btn btn-ghost shrink-0 !p-2" :aria-label="t('admin.accountVault.copyEmail')" :title="t('admin.accountVault.copyEmail')" :data-testid="`vault-copy-email-${row.id}`" @click="copyToClipboard(row.email, t('admin.accountVault.emailCopied'))"><Icon name="copy" size="sm" /></button></div>
+              <p class="mt-1 truncate text-xs text-gray-600 dark:text-gray-300" :title="row.issuer">{{ row.issuer || t('admin.accountVault.noIssuer') }}</p>
             </div>
           </template>
           <template #cell-id="{ row }"><span class="font-mono text-sm text-gray-600 dark:text-gray-300">#{{ row.id }}</span></template>
+          <template #cell-quota="{ row }"><VaultQuotaCell :health="automationHealth[row.id]" :query-error="automationError" /></template>
           <template #cell-group="{ row }">
-            <button type="button" class="rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300" :disabled="groupSaving" :aria-label="t('admin.accountVault.groups.set') + ': ' + row.email" :data-testid="`vault-group-${row.id}`" @click="openGroup([row])">{{ row.group_name || t('admin.accountVault.groups.ungrouped') }}</button>
+            <button type="button" class="max-w-20 truncate rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-700 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300" :title="row.group_name || t('admin.accountVault.groups.ungrouped')" :disabled="groupSaving" :aria-label="t('admin.accountVault.groups.set') + ': ' + row.email" :data-testid="`vault-group-${row.id}`" @click="openGroup([row])">{{ row.group_name || t('admin.accountVault.groups.ungrouped') }}</button>
           </template>
           <template #cell-password="{ row }">
             <div class="flex items-center justify-end gap-2 md:justify-start">
@@ -78,11 +86,11 @@
             </div>
           </template>
           <template #cell-rotation="{ row }">
-            <div class="min-w-44 max-w-60 text-left" :data-testid="`vault-rotation-${row.id}`">
+            <div class="w-32 text-left" :data-testid="`vault-rotation-${row.id}`">
               <button type="button" class="text-left text-sm font-medium" :class="rotationCompleted(row, rotationJobs[row.id]) ? 'text-green-700 dark:text-green-300' : ['paused', 'blocked', 'maintenance', 'awaiting_user', 'awaiting_provider', 'unknown'].includes(rotationState(row, rotationJobs[row.id])) ? 'text-amber-800 dark:text-amber-300' : 'text-gray-800 dark:text-gray-100'" @click="rotationDetail = row">
                 {{ t(`admin.accountVault.rotation.states.${rotationState(row, rotationJobs[row.id])}`) }}
               </button>
-              <template v-if="rotationSuppressesCode(row, rotationJobs[row.id]) || rotationCompleted(row, rotationJobs[row.id])">
+              <template v-if="rotationSuppressesCode(row, rotationJobs[row.id])">
                 <p class="mt-1 whitespace-normal text-xs text-gray-600 dark:text-gray-300">{{ rotationState(row, rotationJobs[row.id]) === 'maintenance' ? t('admin.accountVault.rotation.maintenancePrompt') : ['awaiting_cloudflare', 'awaiting_navigation', 'awaiting_provider'].includes(rotationJobs[row.id]?.progress || '') ? rotationJobs[row.id].message : rotationJobs[row.id]?.progress === 'awaiting_user' ? t('admin.accountVault.rotation.manualPrompt') : t('admin.accountVault.rotation.step', { current: rotationStep(row, rotationJobs[row.id]), total: rotationSteps.length, name: t(`admin.accountVault.rotation.phases.${rotationPhase(row, rotationJobs[row.id])}`) }) }}</p>
                 <p v-if="rotationWorkerHint(rotationJobs[row.id])" class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ rotationWorkerHint(rotationJobs[row.id]) }}</p>
                 <p v-if="rotationJobs[row.id]?.status === 'paused' && rotationJobs[row.id]?.message" class="mt-1 whitespace-normal text-xs text-amber-800 dark:text-amber-300">{{ rotationJobs[row.id].message }}</p>
@@ -98,25 +106,27 @@
             </div>
           </template>
           <template #cell-session="{ row }">
-            <div class="min-w-48 max-w-64 space-y-2 text-left text-xs" :data-testid="`vault-session-${row.id}`">
-              <p class="font-medium text-gray-800 dark:text-gray-100">{{ sessionJobs[row.id] ? t(`admin.accountVault.session.states.${sessionJobs[row.id].status}`) : t('admin.accountVault.session.empty') }}</p>
-              <template v-if="sessionJobs[row.id]">
-                <p class="break-words text-gray-600 dark:text-gray-300">{{ sessionJobs[row.id].message }}</p>
+            <div class="min-w-40 max-w-52 space-y-1 text-left text-xs" :data-testid="`vault-session-${row.id}`">
+              <p class="font-medium" :class="sessionReady(row.id) ? 'text-green-700 dark:text-green-300' : 'text-gray-800 dark:text-gray-100'">{{ sessionReady(row.id) ? t('admin.accountVault.session.readyShort', { id: sessionJobs[row.id].gateway_account_id }) : sessionJobs[row.id] ? t(`admin.accountVault.session.states.${sessionJobs[row.id].status}`) : t('admin.accountVault.session.empty') }}</p>
+              <template v-if="sessionJobs[row.id] && !sessionReady(row.id)">
+                <p class="line-clamp-2 break-words text-gray-600 dark:text-gray-300" :title="sessionJobs[row.id].message">{{ sessionJobs[row.id].message }}</p>
                 <div class="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"><div class="h-full bg-primary-500" :style="{ width: `${sessionProgress(row.id)}%` }"></div></div>
-                <p v-if="sessionJobs[row.id].status === 'running' && sessionJobs[row.id].progress === 'working'">{{ t('admin.accountVault.session.estimate') }}</p>
-                <p v-if="sessionJobs[row.id].gateway_account_id">{{ t('admin.accountVault.session.gatewayAccount', { id: sessionJobs[row.id].gateway_account_id }) }}</p>
-                <p v-if="sessionJobs[row.id].credential_expires_at">{{ t('admin.accountVault.session.expires', { time: new Date(sessionJobs[row.id].credential_expires_at!).toLocaleString() }) }}</p>
-                <p v-if="sessionReady(row.id)">{{ t('admin.accountVault.session.refreshHint') }}</p>
-                <p v-if="rotationWorkerHint(sessionJobs[row.id])">{{ rotationWorkerHint(sessionJobs[row.id]) }}</p>
               </template>
               <div class="flex flex-wrap gap-2">
                 <button type="button" class="text-primary-700 hover:underline dark:text-primary-300" :disabled="!canQueueSession(row) || Boolean(jobActionBusy) || Boolean(sensitiveBusy)" :data-testid="`vault-session-queue-${row.id}`" @click="openQueue('session', [row])">{{ t(sessionJobs[row.id]?.status === 'completed' ? 'admin.accountVault.session.update' : 'admin.accountVault.session.start') }}</button>
                 <button v-if="sessionJobs[row.id]?.can_resume" type="button" class="text-primary-700 hover:underline" :disabled="Boolean(jobActionBusy)" @click="runSessionAction('resume', [row])">{{ t('admin.accountVault.rotation.resume') }}</button>
                 <button v-if="sessionJobs[row.id]?.can_cancel" type="button" class="text-gray-600 hover:underline" :disabled="Boolean(jobActionBusy)" @click="runSessionAction('cancel', [row])">{{ t('admin.accountVault.rotation.cancel') }}</button>
-                <template v-if="sessionReady(row.id)">
-                  <button type="button" class="text-primary-700 hover:underline" :disabled="Boolean(jobActionBusy)" @click="downloadSessions([row], 'import')">{{ t('admin.accountVault.session.download') }}</button>
-                </template>
               </div>
+              <details v-if="sessionJobs[row.id]" class="text-gray-500" :data-testid="`vault-session-details-${row.id}`">
+                <summary class="cursor-pointer text-primary-700 dark:text-primary-300">{{ t('admin.accountVault.session.details') }}</summary>
+                <div class="mt-1 space-y-1 break-words">
+                  <p>{{ sessionJobs[row.id].message }}</p>
+                  <p v-if="sessionJobs[row.id].credential_expires_at">{{ t('admin.accountVault.session.expires', { time: new Date(sessionJobs[row.id].credential_expires_at!).toLocaleString() }) }}</p>
+                  <p v-if="sessionReady(row.id)">{{ t('admin.accountVault.session.refreshHint') }}</p>
+                  <p v-if="rotationWorkerHint(sessionJobs[row.id])">{{ rotationWorkerHint(sessionJobs[row.id]) }}</p>
+                  <button v-if="sessionReady(row.id)" type="button" class="text-primary-700 hover:underline" :disabled="Boolean(jobActionBusy)" @click="downloadSessions([row], 'import')">{{ t('admin.accountVault.session.download') }}</button>
+                </div>
+              </details>
             </div>
           </template>
           <template #cell-totp="{ row }">
@@ -227,6 +237,8 @@ import { useStepUp, isStepUpCancelled, isStepUpBlocked, stepUpBlockReason } from
 import { isVaultCancelled, useAccountVault, vaultError } from '@/features/account-vault/useAccountVault'
 import type { VaultAccount, VaultImportResult, VaultRotationJob, VaultGroup } from '@/types/accountVault'
 import { useVaultRotation } from '@/features/account-vault/useVaultRotation'
+import { useVaultAutomation } from '@/features/account-vault/useVaultAutomation'
+import VaultQuotaCell from '@/components/admin/account-vault/VaultQuotaCell.vue'
 import { canCancelRotation, canQueueRotation, canResumeRotation, rotationCompleted, rotationPhase, rotationProgress, rotationRemainingRange, rotationState, rotationSuppressesCode } from '@/features/account-vault/rotation'
 
 const { t } = useI18n()
@@ -333,6 +345,40 @@ const { jobs: rotationJobs, queryError: rotationQueryError, query: queryRotation
 const selectedAccounts = computed(() => accounts.value.filter(account => selected.value.includes(account.id)))
 const selectedCopyBlocked = computed(() => selectedAccounts.value.some(account => rotationSuppressesCode(account, rotationJobs.value[account.id])))
 const { jobs: sessionJobs, query: querySessions, acceptQueue: acceptSessionQueue, acceptJob: acceptSessionJob } = useVaultRotation(accounts, () => {}, 'session')
+const { enabled: automationEnabled, error: automationError, health: automationHealth, busy: automationBusy, query: queryAutomation } = useVaultAutomation(accounts, async () => { await querySessions() })
+const automationSaving = ref(false)
+async function reauthorizeInvalid() {
+  if (jobActionBusy.value || sensitiveBusy.value || automationBusy.value) return
+  const current = ++actionSequence
+  const controller = new AbortController()
+  actionController = controller
+  jobActionBusy.value = 'reauthorize'
+  try {
+    const result = await stepUp.run(() => accountVaultAPI.reauthorizeInvalid(controller.signal))
+    if (!alive || current !== actionSequence || controller.signal.aborted) return
+    acceptSessionQueue(result)
+    app.showSuccess(result.checked === 0 && result.skipped === 0 ? t('admin.accountVault.automation.noInvalid') : t('admin.accountVault.automation.reauthorizeResult', { queued: result.rows.filter(row => ['queued', 'existing'].includes(row.status)).length, refreshed: result.refreshed, failed: result.failed + result.rows.filter(row => ['error', 'blocked'].includes(row.status)).length, skipped: result.skipped }))
+    void querySessions()
+    void queryAutomation()
+  } catch (error) { if (alive && !controller.signal.aborted && !isStepUpCancelled(error)) sensitiveError(error) }
+  finally { if (current === actionSequence) { jobActionBusy.value = ''; actionController = null } }
+}
+async function toggleAutomation(event: Event) {
+  const input = event.target as HTMLInputElement
+  const next = input.checked
+  input.checked = automationEnabled.value
+  automationSaving.value = true
+  try {
+    const settings = await stepUp.run(() => accountVaultAPI.setAutomation(next))
+    automationEnabled.value = settings.enabled
+    await queryAutomation()
+  } catch (error) { if (!isStepUpCancelled(error)) app.showError(t('admin.accountVault.automation.queryFailed')) }
+  finally { automationSaving.value = false }
+}
+async function refreshQuota() {
+  try { await stepUp.run(() => queryAutomation(true)) }
+  catch (error) { if (!isStepUpCancelled(error)) app.showError(t('admin.accountVault.automation.queryFailed')) }
+}
 const sessionActive = (id: number) => ['queued', 'running', 'paused'].includes(sessionJobs.value[id]?.status ?? '')
 const sessionReady = (id: number) => sessionJobs.value[id]?.status === 'completed' && sessionJobs.value[id]?.phase === 'completed' && Boolean(sessionJobs.value[id]?.completed_at) && Boolean(sessionJobs.value[id]?.gateway_account_id)
 const canQueueSession = (account: VaultAccount) => account.has_password && !sessionActive(account.id) && !rotationSuppressesCode(account, rotationJobs.value[account.id])
@@ -376,8 +422,9 @@ const columns = computed(() => [
   { key: 'remaining', label: t('admin.accountVault.remaining') },
   { key: 'rotation', label: t('admin.accountVault.rotation.title') },
   { key: 'session', label: t('admin.accountVault.session.title') },
+  { key: 'quota', label: t('admin.accountVault.automation.quota') },
   { key: 'actions', label: t('common.actions') }
-].map(column => ({ ...column, class: '!px-3' })))
+].map(column => ({ ...column, class: '!px-2' })))
 
 function formatCode(value: string) {
   if (!value) return '••• •••'

@@ -25,6 +25,9 @@ func NewAccountVaultRotationHandler(rotation *service.AccountVaultRotationServic
 	return &AccountVaultRotationHandler{rotation: rotation}
 }
 func ProvideAccountVaultRotationHandler(rotation *service.AccountVaultRotationService, accounts *AccountHandler) *AccountVaultRotationHandler {
+	if rotation != nil && accounts != nil {
+		rotation.ConfigureAutomation(accounts.accountUsageService)
+	}
 	return &AccountVaultRotationHandler{rotation: rotation, accounts: accounts}
 }
 

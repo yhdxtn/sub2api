@@ -154,6 +154,7 @@ docs/screenshots/*
 frontend/coverage/
 aicodex
 output/
+outputs/
 .codegraph/
 issues/
 

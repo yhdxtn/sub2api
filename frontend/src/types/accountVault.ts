@@ -1,3 +1,10 @@
+export interface VaultQuotaWindow { used_percent: number; limit_window_seconds: number; reset_at: number; reset_after_seconds: number }
+export interface VaultAccountHealth {
+  account_id: number; gateway_account_id: number; status: string; error_code?: string; checked_at: string
+  quota?: { primary?: VaultQuotaWindow; secondary?: VaultQuotaWindow; fetched_at: string }
+}
+export interface VaultAutomationSettings { enabled: boolean; query_interval_seconds: number }
+
 export interface VaultAccount {
   id: number
   email: string

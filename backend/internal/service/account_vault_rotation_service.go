@@ -24,6 +24,7 @@ type AccountVaultRotationService struct {
 	users      UserRepository
 	now        func() time.Time
 	autoWorker *accountVaultAutoWorker
+	automation *vaultAutomation
 }
 
 func NewAccountVaultRotationService(repo AccountVaultRotationRepository, vault *AccountVaultService, users UserRepository) *AccountVaultRotationService {

@@ -1,5 +1,16 @@
 export default {
   accountVault: {
+    automation: {
+      reauthorize: '一键恢复失效凭证', shortHint: '每分钟同步 · 验证需人工完成',
+      reauthorizeResult: '已排队 {queued} 个，查询后可用 {refreshed} 个，查询或排队失败 {failed} 个，跳过 {skipped} 个',
+      reauthorizeHint: '检查全部已关联账号，不受当前分组或勾选影响；能刷新则刷新，确认失效才重新授权。', checking: '正在检查…', noInvalid: '未发现待恢复的失效凭证',
+      title: '凭证失效自动重新授权', quota: '实时额度 / 授权状态', refresh: '立即查询额度',
+      hint: '每分钟自动查询已关联账号；普通按钮等待 1–2 秒。人机验证、邮件验证、Passkey 需手动完成。',
+      queryFailed: '查询失败，当前额度未知，请重试', remaining: '剩余 {percent}%',
+      reset: '重置：{time}', checked: '查询：{time}', cached: '缓存', live: '实时查询',
+      manualHint: '请查看授权进度，需要时在助手窗口完成验证或点击重新授权。',
+      states: { live: '已获取额度', unknown: '尚未查询 / 未关联', error: '额度未知，查询失败', reauthorizing: '凭证恢复中', manual_required: '需要手动处理' },
+    },
     groups: {
       title: '分组', filter: '按分组筛选', all: '全部分组', ungrouped: '未分组',
       set: '设置分组', batch: '批量设置分组（{count}）', selected: '将修改 {count} 个账号的分组',
@@ -15,6 +26,7 @@ export default {
 		copyFormat: '每行：邮箱----密码----2FA密钥（有备注时追加 ----备注）',
 		copyPending: '所选账号换绑尚未确认完成，请完成后再复制完整账号。',
     session: {
+      readyShort: '已授权 · 系统 #{id}', details: '详情',
       title: 'OAuth 授权',
       empty: '尚未授权',
       start: '授权添加账号',
