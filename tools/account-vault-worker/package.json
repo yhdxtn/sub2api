@@ -1,0 +1,15 @@
+{
+  "name": "sub2api-account-vault-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Visible local browser assistant for administrator-authorized initial 2FA rotation",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "start": "node src/cli.mjs",
+    "install:browser": "playwright install chromium",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node --test test/browser/*.test.mjs"
+  },
+  "dependencies": { "playwright": "1.64.0" }
+}

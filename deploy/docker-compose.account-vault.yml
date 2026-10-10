@@ -1,0 +1,8 @@
+# 与现有 Compose 文件组合使用，从当前源码构建管理员账号库版本。
+# 所有数据库、卷、网络和端口配置继续继承第一个 Compose 文件。
+services:
+  sub2api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: sub2api:account-vault

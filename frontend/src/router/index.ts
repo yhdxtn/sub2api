@@ -526,6 +526,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/account-vault',
+    name: 'AdminAccountVault',
+    component: () => import('@/views/admin/AccountVaultView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Account vault',
+      titleKey: 'admin.accountVault.title',
+      descriptionKey: 'admin.accountVault.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),
